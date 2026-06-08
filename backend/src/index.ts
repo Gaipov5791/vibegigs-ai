@@ -11,15 +11,8 @@ const PARSE_INTERVAL_MS = 10 * 60 * 1000;
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const CLIENT_ORIGIN = process.env.CLIENT_URL || "http://localhost:3000";
 
-app.use(
-  cors({
-    origin: CLIENT_ORIGIN,
-    methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
+app.use(cors({ origin: "*" }));
 app.use(express.json());
 
 app.get("/health", (_req, res) => {
@@ -37,7 +30,7 @@ async function start() {
 
   app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
-    console.log(`CORS enabled for ${CLIENT_ORIGIN}`);
+    console.log("CORS enabled for all origins");
   });
 }
 
