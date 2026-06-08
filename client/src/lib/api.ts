@@ -2,7 +2,9 @@ import type { AnalyzedJob, DashboardStats, JobStatus, UserProfile } from "@/type
 import { createClient } from "@/lib/supabase/client";
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
+  process.env.NEXT_PUBLIC_BACKEND_URL ??
+  process.env.NEXT_PUBLIC_API_URL ??
+  "http://localhost:5000";
 
 async function getAuthHeaders(): Promise<HeadersInit> {
   const supabase = createClient();
