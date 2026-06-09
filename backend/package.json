@@ -15,15 +15,16 @@
   "type": "commonjs",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.101.0",
+    "@google/generative-ai": "^0.24.1",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
+    "@supabase/supabase-js": "^2.49.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "html-to-text": "^10.0.0",
     "pg": "^8.21.0",
-    "rss-parser": "^3.13.0",
-    "@supabase/supabase-js": "^2.49.1"
+    "rss-parser": "^3.13.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

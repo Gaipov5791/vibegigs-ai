@@ -1,71 +1,11 @@
-import Anthropic from "@anthropic-ai/sdk";
+import {
+  GoogleGenerativeAI,
+  SchemaType,
+  type Schema,
+} from "@google/generative-ai";
 import type { ProfileData } from "../lib/profileDefaults";
 
-const MODEL = "claude-sonnet-4-6";
-
-function buildAnalysisTool(techStack: string[]): Anthropic.Tool {
-  const stackLabel = techStack.join(", ");
-
-  return {
-    name: "submit_job_analysis",
-    description:
-      "Submit structured analysis and financial estimate for a remote full-stack / automation job from international platforms (We Work Remotely, Contra)",
-    input_schema: {
-      type: "object",
-      properties: {
-        match_percentage: {
-          type: "number",
-          description: `Score from 0 to 100 indicating fit for the developer's stack: ${stackLabel}`,
-        },
-        estimated_price_usd: {
-          type: "number",
-          description:
-            "Estimated project price or annual salary range midpoint in USD for international remote contracts",
-        },
-        estimated_days: {
-          type: "number",
-          description:
-            "Estimated delivery timeline in working days for a solo senior developer (use 0 for full-time roles)",
-        },
-        ai_summary: {
-          type: "string",
-          description:
-            "1-2 sentence essence of the job in Russian (for internal admin dashboard)",
-        },
-        red_flags: {
-          type: "array",
-          items: { type: "string" },
-          description: "Array of risk flags if any, empty array if none (in Russian)",
-        },
-        tech_stack: {
-          type: "array",
-          items: { type: "string" },
-          description: "Technologies required in the job description",
-        },
-        cover_letter_expert: {
-          type: "string",
-          description:
-            "Cover letter strictly in English: professional, confident senior tone; proposes a concrete technical solution; highlights automation, AI agents, and LLM integration expertise",
-        },
-        direct_apply_link: {
-          type: "string",
-          description:
-            "Direct application destination: URL to application form (Greenhouse, Lever, company careers page) or contact email. Empty string if not found in the job text.",
-        },
-      },
-      required: [
-        "match_percentage",
-        "estimated_price_usd",
-        "estimated_days",
-        "ai_summary",
-        "red_flags",
-        "tech_stack",
-        "cover_letter_expert",
-        "direct_apply_link",
-      ],
-    },
-  };
-}
+const MODEL = "gemini-1.5-flash";
 
 export interface JobAnalysis {
   match_percentage: number;
@@ -78,9 +18,64 @@ export interface JobAnalysis {
   direct_apply_link: string;
 }
 
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+function buildResponseSchema(techStack: string[]): Schema {
+  const stackLabel = techStack.join(", ");
+
+  return {
+    type: SchemaType.OBJECT,
+    properties: {
+      match_percentage: {
+        type: SchemaType.NUMBER,
+        description: `Score from 0 to 100 indicating fit for the developer's stack: ${stackLabel}`,
+      },
+      estimated_price_usd: {
+        type: SchemaType.NUMBER,
+        description:
+          "Estimated project price or annual salary range midpoint in USD for international remote contracts",
+      },
+      estimated_days: {
+        type: SchemaType.NUMBER,
+        description:
+          "Estimated delivery timeline in working days for a solo senior developer (use 0 for full-time roles)",
+      },
+      ai_summary: {
+        type: SchemaType.STRING,
+        description:
+          "1-2 sentence essence of the job in Russian (for internal admin dashboard)",
+      },
+      red_flags: {
+        type: SchemaType.ARRAY,
+        items: { type: SchemaType.STRING },
+        description: "Array of risk flags if any, empty array if none (in Russian)",
+      },
+      tech_stack: {
+        type: SchemaType.ARRAY,
+        items: { type: SchemaType.STRING },
+        description: "Technologies required in the job description",
+      },
+      cover_letter_expert: {
+        type: SchemaType.STRING,
+        description:
+          "Cover letter strictly in English: professional, confident senior tone; proposes a concrete technical solution; highlights automation, AI agents, and LLM integration expertise",
+      },
+      direct_apply_link: {
+        type: SchemaType.STRING,
+        description:
+          "Direct application destination: URL to application form (Greenhouse, Lever, company careers page) or contact email. Empty string if not found in the job text.",
+      },
+    },
+    required: [
+      "match_percentage",
+      "estimated_price_usd",
+      "estimated_days",
+      "ai_summary",
+      "red_flags",
+      "tech_stack",
+      "cover_letter_expert",
+      "direct_apply_link",
+    ],
+  };
+}
 
 function buildSystemPrompt(profile: ProfileData): string {
   const stackLabel = profile.tech_stack.join(", ");
@@ -107,41 +102,18 @@ Rules:
 - cover_letter_expert: STRICTLY IN ENGLISH. Write as an automation systems expert with this background: ${profile.bio}. Professional, confident senior tone. Propose a concrete technical approach. Highlight experience with ${stackLabel}, automated systems, AI agents, and LLM integration. No filler or generic politeness.
 - direct_apply_link: Find WHERE to send the application in the job text — application form URL (Greenhouse, Lever, company careers site), company website apply page, or contact email. Output the full URL or email address. Use empty string if not found. Never return the We Work Remotely listing URL.
 
-Respond only via submit_job_analysis — no text outside the structured response.`;
+Respond only with valid JSON matching the required schema — no text outside the structured response.`;
 }
 
-export async function analyzeJob(
-  description: string,
-  title: string,
-  profile: ProfileData
-): Promise<JobAnalysis> {
-  const analysisTool = buildAnalysisTool(profile.tech_stack);
-
-  const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: 2048,
-    system: buildSystemPrompt(profile),
-    tools: [analysisTool],
-    tool_choice: { type: "tool", name: "submit_job_analysis" },
-    messages: [
-      {
-        role: "user",
-        content: `Analyze this remote job listing from an international platform:\n\nTitle: ${title}\n\nDescription:\n${description}`,
-      },
-    ],
-  });
-
-  const toolBlock = response.content.find(
-    (block) =>
-      block.type === "tool_use" && block.name === "submit_job_analysis"
-  );
-
-  if (!toolBlock || toolBlock.type !== "tool_use") {
-    throw new Error("Claude did not return structured analysis");
+function getClient(): GoogleGenerativeAI {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY is not configured");
   }
+  return new GoogleGenerativeAI(apiKey);
+}
 
-  const input = toolBlock.input as JobAnalysis;
-
+function normalizeAnalysis(input: JobAnalysis): JobAnalysis {
   return {
     ...input,
     match_percentage: Math.min(100, Math.max(0, input.match_percentage)),
@@ -149,6 +121,66 @@ export async function analyzeJob(
     estimated_days: Math.max(0, Math.round(input.estimated_days ?? 0)),
     red_flags: input.red_flags ?? [],
     tech_stack: input.tech_stack ?? [],
+    cover_letter_expert: input.cover_letter_expert ?? "",
     direct_apply_link: input.direct_apply_link?.trim() ?? "",
   };
+}
+
+export async function analyzeJob(
+  description: string,
+  title: string,
+  profile: ProfileData
+): Promise<JobAnalysis> {
+  const client = getClient();
+
+  const model = client.getGenerativeModel({
+    model: MODEL,
+    systemInstruction: buildSystemPrompt(profile),
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: buildResponseSchema(profile.tech_stack),
+      maxOutputTokens: 2048,
+      temperature: 0.4,
+    },
+  });
+
+  let result;
+  try {
+    result = await model.generateContent(
+      `Analyze this remote job listing from an international platform:\n\nTitle: ${title}\n\nDescription:\n${description}`
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Gemini API request failed: ${message}`);
+  }
+
+  const response = result.response;
+
+  if (response.promptFeedback?.blockReason) {
+    throw new Error(
+      `Gemini blocked the prompt: ${response.promptFeedback.blockReason}`
+    );
+  }
+
+  let text: string;
+  try {
+    text = response.text();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Gemini response blocked or empty: ${message}`);
+  }
+
+  if (!text) {
+    throw new Error("Gemini did not return structured analysis");
+  }
+
+  let parsed: JobAnalysis;
+  try {
+    parsed = JSON.parse(text) as JobAnalysis;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to parse Gemini JSON response: ${message}`);
+  }
+
+  return normalizeAnalysis(parsed);
 }
