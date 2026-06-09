@@ -1,8 +1,4 @@
-import {
-  GoogleGenerativeAI,
-  SchemaType,
-  type Schema,
-} from "@google/generative-ai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { ProfileData } from "../lib/profileDefaults";
 
 const MODEL = "gemini-1.5-flash";
@@ -19,91 +15,57 @@ export interface JobAnalysis {
   direct_apply_link: string;
 }
 
-function buildResponseSchema(techStack: string[]): Schema {
-  const stackLabel = techStack.join(", ");
-
-  return {
-    type: SchemaType.OBJECT,
-    properties: {
-      match_percentage: {
-        type: SchemaType.NUMBER,
-        description: `Score from 0 to 100 indicating fit for the developer's stack: ${stackLabel}`,
-      },
-      estimated_price_usd: {
-        type: SchemaType.NUMBER,
-        description:
-          "Estimated project price or annual salary range midpoint in USD for international remote contracts",
-      },
-      estimated_days: {
-        type: SchemaType.NUMBER,
-        description:
-          "Estimated delivery timeline in working days for a solo senior developer (use 0 for full-time roles)",
-      },
-      ai_summary: {
-        type: SchemaType.STRING,
-        description:
-          "1-2 sentence essence of the job in Russian (for internal admin dashboard)",
-      },
-      red_flags: {
-        type: SchemaType.ARRAY,
-        items: { type: SchemaType.STRING },
-        description: "Array of risk flags if any, empty array if none (in Russian)",
-      },
-      tech_stack: {
-        type: SchemaType.ARRAY,
-        items: { type: SchemaType.STRING },
-        description: "Technologies required in the job description",
-      },
-      cover_letter_expert: {
-        type: SchemaType.STRING,
-        description:
-          "Cover letter strictly in English: professional, confident senior tone; proposes a concrete technical solution; highlights automation, AI agents, and LLM integration expertise",
-      },
-      direct_apply_link: {
-        type: SchemaType.STRING,
-        description:
-          "Direct application destination: URL to application form (Greenhouse, Lever, company careers page) or contact email. Empty string if not found in the job text.",
-      },
-    },
-    required: [
-      "match_percentage",
-      "estimated_price_usd",
-      "estimated_days",
-      "ai_summary",
-      "red_flags",
-      "tech_stack",
-      "cover_letter_expert",
-      "direct_apply_link",
-    ],
-  };
+interface GeminiJobResponse {
+  score: number;
+  why_suitable: string;
+  client_pain: string;
+  cover_letter_expert: string;
+  direct_apply_link: string | null;
 }
 
-function buildSystemPrompt(profile: ProfileData): string {
+function buildPrompt(
+  profile: ProfileData,
+  title: string,
+  description: string
+): string {
   const stackLabel = profile.tech_stack.join(", ");
   const stopWordsLabel =
     profile.stop_words.length > 0
       ? profile.stop_words.join(", ")
       : "none specified";
 
-  return `You are an AI analyst evaluating remote job listings from international bidding-free platforms (We Work Remotely, Contra) for a senior developer.
+  return `You are an AI analyst evaluating remote job listings from international bidding-free platforms (We Work Remotely, Contra) for a senior developer specializing in automation systems, AI agents, data parsers, and LLM integration.
 
 Developer background:
 ${profile.bio}
 
 Primary tech stack: ${stackLabel}
-Stop words (reduce match if found in description): ${stopWordsLabel}
+Stop words (reduce score if found in description): ${stopWordsLabel}
 
 Rules:
-- match_percentage: objective score (0–100) for fit with the developer's stack and specialization in automated systems, AI agents, data parsers, and LLM integration.
-- If stop words appear in the job description, significantly reduce match_percentage.
-- estimated_price_usd: realistic USD estimate for remote international contracts. For full-time roles, use approximate annual salary midpoint.
-- estimated_days: working days for project-based work; use 0 for full-time/permanent roles.
-- ai_summary: write in Russian — brief essence for the admin dashboard (1–2 sentences).
-- red_flags and tech_stack: risks and technologies from the job text (red_flags in Russian).
+- score: objective fit score (1–100) for the developer's stack and automation/AI specialization.
+- If stop words appear in the job description, significantly reduce score.
+- why_suitable: explain in Russian why this job fits the developer (1–2 sentences).
+- client_pain: describe in Russian the client's core problem or need inferred from the listing.
 - cover_letter_expert: STRICTLY IN ENGLISH. Write as an automation systems expert with this background: ${profile.bio}. Professional, confident senior tone. Propose a concrete technical approach. Highlight experience with ${stackLabel}, automated systems, AI agents, and LLM integration. No filler or generic politeness.
-- direct_apply_link: Find WHERE to send the application in the job text — application form URL (Greenhouse, Lever, company careers site), company website apply page, or contact email. Output the full URL or email address. Use empty string if not found. Never return the We Work Remotely listing URL.
+- direct_apply_link: Find WHERE to send the application in the job text — application form URL (Greenhouse, Lever, company careers site), company website apply page, or contact email. Use null if not found. Never return the We Work Remotely listing URL.
 
-Respond only with valid JSON matching the required schema — no text outside the structured response.`;
+Analyze this remote job listing from an international platform:
+
+Title: ${title}
+
+Description:
+${description}
+
+CRITICAL: You must respond ONLY with a raw, valid JSON object matching the schema below. Do not include markdown blocks like \`\`\`json, do not include any text outside the JSON object.
+Schema:
+{
+  "score": number (1-100),
+  "why_suitable": "text in Russian",
+  "client_pain": "text in Russian",
+  "cover_letter_expert": "text in English",
+  "direct_apply_link": "string or null"
+}`;
 }
 
 function getClient(): GoogleGenerativeAI {
@@ -114,16 +76,27 @@ function getClient(): GoogleGenerativeAI {
   return new GoogleGenerativeAI(apiKey);
 }
 
-function normalizeAnalysis(input: JobAnalysis): JobAnalysis {
+function extractJsonText(text: string): string {
+  const trimmed = text.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  return fenced ? fenced[1].trim() : trimmed;
+}
+
+function mapToJobAnalysis(parsed: GeminiJobResponse): JobAnalysis {
+  const clientPain = parsed.client_pain?.trim() ?? "";
+
   return {
-    ...input,
-    match_percentage: Math.min(100, Math.max(0, input.match_percentage)),
-    estimated_price_usd: Math.max(0, Math.round(input.estimated_price_usd ?? 0)),
-    estimated_days: Math.max(0, Math.round(input.estimated_days ?? 0)),
-    red_flags: input.red_flags ?? [],
-    tech_stack: input.tech_stack ?? [],
-    cover_letter_expert: input.cover_letter_expert ?? "",
-    direct_apply_link: input.direct_apply_link?.trim() ?? "",
+    match_percentage: Math.min(100, Math.max(0, parsed.score ?? 0)),
+    estimated_price_usd: 0,
+    estimated_days: 0,
+    ai_summary: parsed.why_suitable?.trim() ?? "",
+    red_flags: clientPain ? [clientPain] : [],
+    tech_stack: [],
+    cover_letter_expert: parsed.cover_letter_expert?.trim() ?? "",
+    direct_apply_link:
+      parsed.direct_apply_link === null
+        ? ""
+        : (parsed.direct_apply_link?.trim() ?? ""),
   };
 }
 
@@ -137,10 +110,7 @@ export async function analyzeJob(
   const model = client.getGenerativeModel(
     {
       model: MODEL,
-      systemInstruction: buildSystemPrompt(profile),
       generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: buildResponseSchema(profile.tech_stack),
         maxOutputTokens: 2048,
         temperature: 0.4,
       },
@@ -151,7 +121,7 @@ export async function analyzeJob(
   let result;
   try {
     result = await model.generateContent(
-      `Analyze this remote job listing from an international platform:\n\nTitle: ${title}\n\nDescription:\n${description}`
+      buildPrompt(profile, title, description)
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -178,13 +148,13 @@ export async function analyzeJob(
     throw new Error("Gemini did not return structured analysis");
   }
 
-  let parsed: JobAnalysis;
+  let parsed: GeminiJobResponse;
   try {
-    parsed = JSON.parse(text) as JobAnalysis;
+    parsed = JSON.parse(extractJsonText(text)) as GeminiJobResponse;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Failed to parse Gemini JSON response: ${message}`);
   }
 
-  return normalizeAnalysis(parsed);
+  return mapToJobAnalysis(parsed);
 }
