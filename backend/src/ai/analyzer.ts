@@ -1,8 +1,7 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { ProfileData } from "../lib/profileDefaults";
 
-const MODEL = "gemini-1.5-flash";
-const API_VERSION = "v1";
+const GEMINI_MODEL = "gemini-1.5-flash";
+const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/${GEMINI_MODEL}:generateContent`;
 
 export interface JobAnalysis {
   match_percentage: number;
@@ -23,6 +22,17 @@ interface GeminiJobResponse {
   direct_apply_link: string | null;
 }
 
+interface GeminiGenerateContentResponse {
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{ text?: string }>;
+    };
+  }>;
+  promptFeedback?: {
+    blockReason?: string;
+  };
+}
+
 function buildPrompt(
   profile: ProfileData,
   title: string,
@@ -34,46 +44,26 @@ function buildPrompt(
       ? profile.stop_words.join(", ")
       : "none specified";
 
-  return `You are an AI analyst evaluating remote job listings from international bidding-free platforms (We Work Remotely, Contra) for a senior developer specializing in automation systems, AI agents, data parsers, and LLM integration.
+  return `You are an expert IT automation engineer. Analyze this job post based on the user's background.
 
-Developer background:
-${profile.bio}
-
-Primary tech stack: ${stackLabel}
+User Tech Stack: ${stackLabel}
 Stop words (reduce score if found in description): ${stopWordsLabel}
+User Bio: ${profile.bio}
 
-Rules:
-- score: objective fit score (1–100) for the developer's stack and automation/AI specialization.
-- If stop words appear in the job description, significantly reduce score.
-- why_suitable: explain in Russian why this job fits the developer (1–2 sentences).
-- client_pain: describe in Russian the client's core problem or need inferred from the listing.
-- cover_letter_expert: STRICTLY IN ENGLISH. Write as an automation systems expert with this background: ${profile.bio}. Professional, confident senior tone. Propose a concrete technical approach. Highlight experience with ${stackLabel}, automated systems, AI agents, and LLM integration. No filler or generic politeness.
-- direct_apply_link: Find WHERE to send the application in the job text — application form URL (Greenhouse, Lever, company careers site), company website apply page, or contact email. Use null if not found. Never return the We Work Remotely listing URL.
+Job Title: ${title}
 
-Analyze this remote job listing from an international platform:
+Job Description to analyze:
+"${description}"
 
-Title: ${title}
-
-Description:
-${description}
-
-CRITICAL: You must respond ONLY with a raw, valid JSON object matching the schema below. Do not include markdown blocks like \`\`\`json, do not include any text outside the JSON object.
-Schema:
+CRITICAL REQUIREMENT: You must respond ONLY with a raw, valid JSON object matching the exact schema below. Do not include markdown blocks like \`\`\`json, do not include any text outside the JSON object.
+JSON Schema:
 {
   "score": number (1-100),
-  "why_suitable": "text in Russian",
-  "client_pain": "text in Russian",
-  "cover_letter_expert": "text in English",
-  "direct_apply_link": "string or null"
+  "why_suitable": "text in Russian explaining why it fits or flags risks",
+  "client_pain": "text in Russian defining what the client actually needs solved",
+  "cover_letter_expert": "a high-converting professional pitch/cover letter in English tailored to this job from the automation expert perspective",
+  "direct_apply_link": "string or null if not found in text"
 }`;
-}
-
-function getClient(): GoogleGenerativeAI {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error("GEMINI_API_KEY is not configured");
-  }
-  return new GoogleGenerativeAI(apiKey);
 }
 
 function extractJsonText(text: string): string {
@@ -105,56 +95,59 @@ export async function analyzeJob(
   title: string,
   profile: ProfileData
 ): Promise<JobAnalysis> {
-  const client = getClient();
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY is missing in environment variables");
+  }
 
-  const model = client.getGenerativeModel(
-    {
-      model: MODEL,
-      generationConfig: {
-        maxOutputTokens: 2048,
-        temperature: 0.4,
-      },
+  const url = `${GEMINI_API_URL}?key=${apiKey}`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
     },
-    { apiVersion: API_VERSION }
-  );
+    body: JSON.stringify({
+      contents: [
+        {
+          parts: [{ text: buildPrompt(profile, title, description) }],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.4,
+        maxOutputTokens: 2048,
+      },
+    }),
+  });
 
-  let result;
-  try {
-    result = await model.generateContent(
-      buildPrompt(profile, title, description)
-    );
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Gemini API request failed: ${message}`);
-  }
-
-  const response = result.response;
-
-  if (response.promptFeedback?.blockReason) {
+  if (!response.ok) {
+    const errText = await response.text();
     throw new Error(
-      `Gemini blocked the prompt: ${response.promptFeedback.blockReason}`
+      `Gemini REST API failed with status ${response.status}: ${errText}`
     );
   }
 
-  let text: string;
+  const data = (await response.json()) as GeminiGenerateContentResponse;
+
+  if (data.promptFeedback?.blockReason) {
+    throw new Error(`Gemini blocked the prompt: ${data.promptFeedback.blockReason}`);
+  }
+
   try {
-    text = response.text();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Gemini response blocked or empty: ${message}`);
-  }
+    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (!rawText) {
+      throw new Error("Gemini response contained no text candidate");
+    }
 
-  if (!text) {
-    throw new Error("Gemini did not return structured analysis");
+    const cleanJsonString = extractJsonText(rawText);
+    const parsed = JSON.parse(cleanJsonString) as GeminiJobResponse;
+    return mapToJobAnalysis(parsed);
+  } catch (parseError) {
+    console.error("[Gemini Parser Error] Failed to parse response:", data);
+    const message =
+      parseError instanceof Error ? parseError.message : String(parseError);
+    throw new Error(
+      `Failed to parse Gemini response into valid JSON structure: ${message}`
+    );
   }
-
-  let parsed: GeminiJobResponse;
-  try {
-    parsed = JSON.parse(extractJsonText(text)) as GeminiJobResponse;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to parse Gemini JSON response: ${message}`);
-  }
-
-  return mapToJobAnalysis(parsed);
 }
