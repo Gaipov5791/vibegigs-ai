@@ -1,0 +1,10 @@
+{
+  "functions": {
+    "src/app/api/jobs/parse/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/profile/route.ts": {
+      "maxDuration": 300
+    }
+  }
+}

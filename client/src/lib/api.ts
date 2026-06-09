@@ -1,11 +1,6 @@
 import type { AnalyzedJob, DashboardStats, JobStatus, UserProfile } from "@/types";
 import { createClient } from "@/lib/supabase/client";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  process.env.NEXT_PUBLIC_API_URL ??
-  "http://localhost:5000";
-
 async function getAuthHeaders(): Promise<HeadersInit> {
   const supabase = createClient();
   const {
@@ -26,7 +21,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const authHeaders = await getAuthHeaders();
 
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(path, {
     ...init,
     headers: {
       ...authHeaders,

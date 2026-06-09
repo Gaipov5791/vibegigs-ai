@@ -1,0 +1,56 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Profile {
+  id                String   @id
+  email             String   @unique
+  tech_stack        Json     @default("[]")
+  stop_words        Json     @default("[]")
+  bio               String   @default("") @db.Text
+  selected_platform String   @default("We Work Remotely")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  analyzedJobs AnalyzedJob[]
+}
+
+model RawJob {
+  id          String   @id @default(cuid())
+  title       String
+  description String   @db.Text
+  budget      String?
+  platform    String
+  url         String   @unique
+  applyUrl    String?
+  status      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  analyzedJobs AnalyzedJob[]
+}
+
+model AnalyzedJob {
+  id                  String   @id @default(cuid())
+  rawJobId            String
+  rawJob              RawJob   @relation(fields: [rawJobId], references: [id], onDelete: Cascade)
+  userId              String
+  profile             Profile  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  match_percentage    Float
+  estimatedPriceUsd   Int?
+  estimatedDays       Int?
+  ai_summary          String   @db.Text
+  red_flags           Json
+  tech_stack          Json
+  cover_letter_expert String   @db.Text
+  direct_apply_link   String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([rawJobId, userId])
+}
