@@ -23,6 +23,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   const res = await fetch(path, {
     ...init,
+    credentials: "include",
     headers: {
       ...authHeaders,
       ...init?.headers,
