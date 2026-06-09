@@ -6,6 +6,7 @@ import {
 import type { ProfileData } from "../lib/profileDefaults";
 
 const MODEL = "gemini-1.5-flash";
+const API_VERSION = "v1";
 
 export interface JobAnalysis {
   match_percentage: number;
@@ -133,16 +134,19 @@ export async function analyzeJob(
 ): Promise<JobAnalysis> {
   const client = getClient();
 
-  const model = client.getGenerativeModel({
-    model: MODEL,
-    systemInstruction: buildSystemPrompt(profile),
-    generationConfig: {
-      responseMimeType: "application/json",
-      responseSchema: buildResponseSchema(profile.tech_stack),
-      maxOutputTokens: 2048,
-      temperature: 0.4,
+  const model = client.getGenerativeModel(
+    {
+      model: MODEL,
+      systemInstruction: buildSystemPrompt(profile),
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: buildResponseSchema(profile.tech_stack),
+        maxOutputTokens: 2048,
+        temperature: 0.4,
+      },
     },
-  });
+    { apiVersion: API_VERSION }
+  );
 
   let result;
   try {
