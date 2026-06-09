@@ -1,7 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl =
-  process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
 export const supabaseAdmin =
@@ -16,7 +15,7 @@ export async function verifyAccessToken(
 ): Promise<{ id: string; email: string } | null> {
   if (!supabaseAdmin) {
     console.warn(
-      "[auth] Supabase not configured — SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing"
+      "[auth] Supabase not configured — NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing"
     );
     return null;
   }

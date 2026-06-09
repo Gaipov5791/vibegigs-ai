@@ -19,7 +19,7 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet: CookieToSet[]) {
-          cookiesToSet.forEach(({ name, value, options }) =>
+          cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
           supabaseResponse = NextResponse.next({ request });
@@ -31,23 +31,8 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const isLoginPage = request.nextUrl.pathname.startsWith("/login");
-
-  if (!user && !isLoginPage) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    return NextResponse.redirect(url);
-  }
-
-  if (user && isLoginPage) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/";
-    return NextResponse.redirect(url);
-  }
+  // Refresh the auth session — do not add logic between createServerClient and getUser().
+  await supabase.auth.getUser();
 
   return supabaseResponse;
 }
