@@ -1,8 +1,5 @@
 import type { ProfileData } from "../lib/profileDefaults";
 
-const GEMINI_MODEL = "gemini-1.5-flash";
-const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/${GEMINI_MODEL}:generateContent`;
-
 export interface JobAnalysis {
   match_percentage: number;
   estimated_price_usd: number;
@@ -100,7 +97,7 @@ export async function analyzeJob(
     throw new Error("GEMINI_API_KEY is missing in environment variables");
   }
 
-  const url = `${GEMINI_API_URL}?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
 
   const response = await fetch(url, {
     method: "POST",
