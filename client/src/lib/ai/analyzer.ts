@@ -64,9 +64,10 @@ JSON Schema:
 }
 
 function extractJsonText(text: string): string {
-  const trimmed = text.trim();
-  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-  return fenced ? fenced[1].trim() : trimmed;
+  let trimmed = text.trim();
+  trimmed = trimmed.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "");
+  const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
+  return (jsonMatch ? jsonMatch[0] : trimmed).trim();
 }
 
 function mapToJobAnalysis(parsed: GeminiJobResponse): JobAnalysis {
@@ -97,7 +98,8 @@ export async function analyzeJob(
     throw new Error("GEMINI_API_KEY is missing in environment variables");
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+  const model = "gemini-2.5-flash-lite";
+  const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
 
   const response = await fetch(url, {
     method: "POST",
@@ -112,7 +114,7 @@ export async function analyzeJob(
       ],
       generationConfig: {
         temperature: 0.4,
-        maxOutputTokens: 2048,
+        maxOutputTokens: 4096,
       },
     }),
   });

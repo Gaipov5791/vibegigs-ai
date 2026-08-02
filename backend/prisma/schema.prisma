@@ -8,49 +8,47 @@ datasource db {
 }
 
 model Profile {
-  id                String   @id
-  email             String   @unique
-  tech_stack        Json     @default("[]")
-  stop_words        Json     @default("[]")
-  bio               String   @default("") @db.Text
-  selected_platform String   @default("We Work Remotely")
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  analyzedJobs AnalyzedJob[]
+  id                String        @id
+  email             String        @unique
+  tech_stack        Json          @default("[]")
+  stop_words        Json          @default("[]")
+  bio               String        @default("")
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  selected_platform String        @default("We Work Remotely")
+  analyzedJobs      AnalyzedJob[]
 }
 
 model RawJob {
-  id          String   @id @default(cuid())
-  title       String
-  description String   @db.Text
-  budget      String?
-  platform    String
-  url         String   @unique
-  applyUrl    String?
-  status      String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
+  id           String        @id @default(cuid())
+  title        String
+  description  String
+  budget       String?
+  platform     String
+  url          String        @unique
+  status       String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  applyUrl     String?
   analyzedJobs AnalyzedJob[]
 }
 
 model AnalyzedJob {
   id                  String   @id @default(cuid())
   rawJobId            String
-  rawJob              RawJob   @relation(fields: [rawJobId], references: [id], onDelete: Cascade)
-  userId              String
-  profile             Profile  @relation(fields: [userId], references: [id], onDelete: Cascade)
   match_percentage    Float
-  estimatedPriceUsd   Int?
-  estimatedDays       Int?
-  ai_summary          String   @db.Text
+  ai_summary          String
   red_flags           Json
-  tech_stack          Json
-  cover_letter_expert String   @db.Text
-  direct_apply_link   String?
+  cover_letter_expert String
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+  tech_stack          Json
+  estimatedDays       Int?
+  estimatedPriceUsd   Int?
+  userId              String
+  direct_apply_link   String?
+  rawJob              RawJob   @relation(fields: [rawJobId], references: [id], onDelete: Cascade)
+  profile             Profile  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([rawJobId, userId])
 }

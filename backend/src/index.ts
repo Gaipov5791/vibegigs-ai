@@ -12,7 +12,12 @@ const PARSE_INTERVAL_MS = 10 * 60 * 1000;
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-app.use(cors({ origin: "*" }));
+app.use(cors({
+  origin: 'http://localhost:3000',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
 app.get("/health", (_req, res) => {

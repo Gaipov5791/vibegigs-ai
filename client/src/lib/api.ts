@@ -18,10 +18,12 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   return headers;
 }
 
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "";
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const authHeaders = await getAuthHeaders();
 
-  const res = await fetch(path, {
+  const res = await fetch(`${BACKEND_URL}${path}`, {
     ...init,
     credentials: "include",
     headers: {
